@@ -5,9 +5,14 @@ import json
 
 webhook = Blueprint('Webhook', __name__, url_prefix='/webhook')
 
-@webhook.route('/receiver', methods=["POST"])
+@webhook.route('', methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+@webhook.route('/', methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 def receiver():
-    """Handle GitHub webhook events"""
+    print("Method:", request.method)
+    print("Headers:", dict(request.headers))
+    print("Data:", request.get_data())
+    if request.method != "POST":
+        return jsonify({"error": "POST required"}), 405
     try:
         # Get the event type from GitHub headers
         event_type = request.headers.get('X-GitHub-Event')
