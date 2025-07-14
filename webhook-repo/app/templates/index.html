@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Webhook Events</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .status {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .events-container {
+            padding: 30px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .event-card {
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .event-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .event-card.push {
+            border-left-color: #28a745;
+        }
+
+        .event-card.pull-request {
+            border-left-color: #ffc107;
+        }
+
+        .event-card.merge {
+            border-left-color: #dc3545;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .event-message {
+            font-size: 1.1em;
+            color: #2c3e50;
+            line-height: 1.6;
+        }
+
+        .event-meta {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+
+        .event-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-right: 10px;
+        }
+
+        .event-type.push {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .event-type.pull-request {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .event-type.merge {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .no-events {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            padding: 40px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #6c757d;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .events-container {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>GitHub Webhook Events</h1>
+            <p>Real-time monitoring of repository activities</p>
+        </div>
+        
+        <div class="status">
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span>Live monitoring active</span>
+            </div>
+            <div>
+                <span id="last-update">Last updated: Never</span>
+            </div>
+        </div>
+        
+        <div class="events-container" id="events-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading events...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class GitHubEventsUI {
+            constructor() {
+                this.eventsContainer = document.getElementById('events-container');
+                this.lastUpdateElement = document.getElementById('last-update');
+                this.pollingInterval = 15000; // 15 seconds
+                this.init();
+            }
+
+            init() {
+                this.loadEvents();
+                this.startPolling();
+            }
+
+            async loadEvents() {
+                try {
+                    const response = await fetch('/api/events');
+                    const events = await response.json();
+                    
+                    if (response.ok) {
+                        this.displayEvents(events);
+                        this.updateLastUpdateTime();
+                    } else {
+                        this.showError('Failed to load events');
+                    }
+                } catch (error) {
+                    console.error('Error loading events:', error);
+                    this.showError('Network error while loading events');
+                }
+            }
+
+            displayEvents(events) {
+                if (!events || events.length === 0) {
+                    this.eventsContainer.innerHTML = `
+                        <div class="no-events">
+                            <h3>No events yet</h3>
+                            <p>GitHub events will appear here once they are received</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const eventsHTML = events.map(event => this.createEventCard(event)).join('');
+                this.eventsContainer.innerHTML = eventsHTML;
+            }
+
+            createEventCard(event) {
+                const typeClass = this.getTypeClass(event.type);
+                const typeLabel = this.getTypeLabel(event.type);
+                
+                return `
+                    <div class="event-card ${typeClass}">
+                        <div class="event-meta">
+                            <span class="event-type ${typeClass}">${typeLabel}</span>
+                            <span>${event.formatted_time}</span>
+                        </div>
+                        <div class="event-message">
+                            ${event.message}
+                        </div>
+                    </div>
+                `;
+            }
+
+            getTypeClass(type) {
+                switch (type) {
+                    case 'PUSH': return 'push';
+                    case 'PULL_REQUEST': return 'pull-request';
+                    case 'MERGE': return 'merge';
+                    default: return 'push';
+                }
+            }
+
+            getTypeLabel(type) {
+                switch (type) {
+                    case 'PUSH': return 'Push';
+                    case 'PULL_REQUEST': return 'Pull Request';
+                    case 'MERGE': return 'Merge';
+                    default: return 'Event';
+                }
+            }
+
+            updateLastUpdateTime() {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString();
+                this.lastUpdateElement.textContent = `Last updated: ${timeString}`;
+            }
+
+            showError(message) {
+                this.eventsContainer.innerHTML = `
+                    <div class="no-events">
+                        <h3>Error</h3>
+                        <p>${message}</p>
+                    </div>
+                `;
+            }
+
+            startPolling() {
+                setInterval(() => {
+                    this.loadEvents();
+                }, this.pollingInterval);
+            }
+        }
+
+        // Initialize the UI when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new GitHubEventsUI();
+        });
+    </script>
+</body>
+</html> 
